@@ -1,0 +1,75 @@
+#!/bin/bash
+# vi: ft=sh
+
+# generation of random 25 characters for a temp password
+TEMP_PASS=$(env LC_CTYPE=C tr -dc "a-zA-Z0-9-_\$\?" < /dev/urandom | head -c 25)
+
+PARAMS=""
+USER=$1
+OU="GAM_Archive"
+HELP="Usage: $(basename $0) [-h] [--user GApps User] [--ou GApps Org Unit]"
+DEST="~/Desktop/GAM_ARCHIVE"
+
+
+# parse passed options
+
+while (( "$#" )); do
+  case "$1" in
+    --user)
+      USER=$2
+      shift 2
+      ;;
+    --ou)
+      OU=$2
+      shift 2
+      ;;
+    -h|--help)
+      echo $HELP
+      exit 0
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+
+echo "We have $USER:$OU:$DEST:$TEMP_PASS"
+
+echo "revoking current oauth"
+
+gam oauth revoke
+
+echo "creating a new oauth"
+
+gam oauth create
+
+echo "Ready ?"
+
+read ready
+
+echo "Moving user to OU:$OU"
+
+gam update ou $OU add users $USER
+
+echo "about to set $USER password to :$TEMP_PASS"
+
+gam update user $USER password $TEMP_PASS
+
+mkdir -p "$DEST/$USER"
+echo "$USER:$TEMP_PASS" >> "$DEST/$USER/archive_secret.txt"
+
+echo "about to start archive of $USER"
+
+for f in ~/.gmvault/*.oauth2; do
+    [ -e "$f" ] && echo "$f: OAUTH2 detected... removing it" || echo "No more OAUTH2 files"
+    sudo rm -f "$f"
+done
+
+gmvault sync -t full -y -d $DEST/$USER $USER
+
+exit 0
